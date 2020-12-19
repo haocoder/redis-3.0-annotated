@@ -230,7 +230,8 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
             // 移动至下一指针
             x = x->level[i].forward;
         }
-        // 记录将要和新节点相连接的节点
+        // 当前节点的第i层的forward节点不满足条件，从当前节点的第i层调到i-1层，开始遍历，
+        // 这里需要记住当前节点的指针，是为了和新插入的节点的第i层相连（记录将要和新节点相连接的节点）
         update[i] = x;
     }
 

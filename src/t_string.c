@@ -148,6 +148,7 @@ void setCommand(redisClient *c) {
     int flags = REDIS_SET_NO_FLAGS;
 
     // 设置选项参数
+    // set命令由三个参数<set, key, value> 所以选项参数从位置3开始解析
     for (j = 3; j < c->argc; j++) {
         char *a = c->argv[j]->ptr;
         robj *next = (j == c->argc-1) ? NULL : c->argv[j+1];
@@ -175,6 +176,7 @@ void setCommand(redisClient *c) {
     }
 
     // 尝试对值对象进行编码
+    // "set key value"
     c->argv[2] = tryObjectEncoding(c->argv[2]);
 
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);

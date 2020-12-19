@@ -86,7 +86,7 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
     eventLoop->stop = 0;
     eventLoop->maxfd = -1;
     eventLoop->beforesleep = NULL;
-    if (aeApiCreate(eventLoop) == -1) goto err;
+    if (aeApiCreate(eventLoop) == -1) goto err;     // 调用I/O多路复用初始化接口
 
     /* Events with mask == AE_NONE are not set. So let's initialize the
      * vector with it. */
@@ -357,7 +357,7 @@ int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
  *    Much better but still insertion or deletion of timers is O(N).
  * 2) Use a skiplist to have this operation as O(1) and insertion as O(log(N)).
  */
-// 寻找里目前时间最近的时间事件
+// 寻找离目前时间最近的时间事件
 // 因为链表是乱序的，所以查找复杂度为 O（N）
 static aeTimeEvent *aeSearchNearestTimer(aeEventLoop *eventLoop)
 {
@@ -447,10 +447,10 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
 
             // 记录是否有需要循环执行这个事件时间
             if (retval != AE_NOMORE) {
-                // 是的， retval 毫秒之后继续执行这个时间事件
+                // 是的， retval 毫秒之后继续执行这个时间事件（定期事件）
                 aeAddMillisecondsToNow(retval,&te->when_sec,&te->when_ms);
             } else {
-                // 不，将这个事件删除
+                // 不，将这个事件删除（定时事件）
                 aeDeleteTimeEvent(eventLoop, id);
             }
 
@@ -506,6 +506,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
      * file events to process as long as we want to process time
      * events, in order to sleep until the next time event is ready
      * to fire. */
+    // 即使没有文件事件，也要调用IO多路复用API阻塞等待直到时间事件到达，这样可以避免
+    // 频繁的对时间事件进行轮询。
     if (eventLoop->maxfd != -1 ||
         ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
         int j;
@@ -610,7 +612,7 @@ int aeWait(int fd, int mask, long long milliseconds) {
     if ((retval = poll(&pfd, 1, milliseconds))== 1) {
         if (pfd.revents & POLLIN) retmask |= AE_READABLE;
         if (pfd.revents & POLLOUT) retmask |= AE_WRITABLE;
-	if (pfd.revents & POLLERR) retmask |= AE_WRITABLE;
+		if (pfd.revents & POLLERR) retmask |= AE_WRITABLE;
         if (pfd.revents & POLLHUP) retmask |= AE_WRITABLE;
         return retmask;
     } else {

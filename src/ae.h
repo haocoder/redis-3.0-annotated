@@ -169,18 +169,19 @@ typedef struct aeEventLoop {
     time_t lastTime;     /* Used to detect system clock skew */
 
     // 已注册的文件事件
-    aeFileEvent *events; /* Registered events */
+    aeFileEvent *events; /* Registered events，个数由setzie控制 */
 
     // 已就绪的文件事件
     aeFiredEvent *fired; /* Fired events */
 
-    // 时间事件
+    // 时间事件列表
     aeTimeEvent *timeEventHead;
 
     // 事件处理器的开关
     int stop;
 
     // 多路复用库的私有数据
+    // 根据由多路复用函数库的特点进行定义
     void *apidata; /* This is used for polling API specific data */
 
     // 在处理事件前要执行的函数

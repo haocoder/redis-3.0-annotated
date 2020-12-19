@@ -131,6 +131,7 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
     aeApiState *state = eventLoop->apidata;
     struct epoll_event ee;
 
+    // 计算新的事件掩码
     int mask = eventLoop->events[fd].mask & (~delmask);
 
     ee.events = 0;
@@ -143,7 +144,7 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int delmask) {
     } else {
         /* Note, Kernel < 2.6.9 requires a non null event pointer even for
          * EPOLL_CTL_DEL. */
-        epoll_ctl(state->epfd,EPOLL_CTL_DEL,fd,&ee);
+        epoll_ctl(state->epfd,EPOLL_CTL_DEL,fd,&ee);  // 不再监听该套接字fd
     }
 }
 

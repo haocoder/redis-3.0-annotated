@@ -403,7 +403,7 @@ void _addReplyStringToList(redisClient *c, char *s, size_t len) {
  * Higher level functions to queue data on the client output buffer.
  * The following functions are the ones that commands implementations will call.
  * -------------------------------------------------------------------------- */
-
+// 将服务端执行完命令后的响应数据保存到客户端输出缓冲区
 void addReply(redisClient *c, robj *obj) {
 
     // 为客户端安装写处理器到事件循环

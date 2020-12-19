@@ -1037,6 +1037,16 @@ unsigned int getLRUClock(void) {
 
 /* Add a sample to the operations per second array of samples. */
 // 将服务器的命令执行次数记录到抽样数组中
+// 通过抽样的方式计算redis服务器最近平均一秒处理的命名请求数量
+// 并保存在server.ops_sec_samples数组中，这个值可以通过"INFO status"命令
+// 的instantaneous_ops_per_sec域查看
+/*
+ * localhost:6379> info stats
+ # Stats
+ total_connections_received:1
+ total_commands_processed:36
+ instantaneous_ops_per_sec:1 # 最近一秒执行了一个命令
+ * */
 void trackOperationsPerSecond(void) {
 
     // 计算两次抽样之间的时间长度，毫秒格式
@@ -1334,7 +1344,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Update the time cache. */
     updateCachedTime();
 
-    // 记录服务器执行命令的次数
+    // 记录服务器执行命令的次数，每100毫秒执行一次
     run_with_period(100) trackOperationsPerSecond();
 
     /* We have just REDIS_LRU_BITS bits per object for LRU information.
@@ -1359,6 +1369,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Record the max memory used since the server was started. */
     // 记录服务器的内存峰值
+    // 通过INFO memory命令查看服务器内存峰值
     if (zmalloc_used_memory() > server.stat_peak_memory)
         server.stat_peak_memory = zmalloc_used_memory();
 
@@ -1367,7 +1378,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
-    // 服务器进程收到 SIGTERM 信号，关闭服务器
+    // 服务器进程收到 SIGTERM 信号，安全关闭服务器
+    // 比如关闭服务器之前先进行RDB持久化
     if (server.shutdown_asap) {
 
         // 尝试关闭服务器
@@ -1416,30 +1428,35 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     clientsCron();
 
     /* Handle background operations on Redis databases. */
-    // 对数据库执行各种操作
+    // 对数据库执行各种操作，删除过期键、rehash等，这些操作不属于前台业务，属于后台类型的操作（即不是用户请求的操作）
     databasesCron();
 
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
+    // 在服务器执行BGSAVE命令的期间，如果客户端向服务器发来BGREWRITEAOF命令，
+    // 那么服务器会将BGREWRITEAOF命令的执行时间延迟到BGSAVE命令执行完毕之后
     // 如果 BGSAVE 和 BGREWRITEAOF 都没有在执行
     // 并且有一个 BGREWRITEAOF 在等待，那么执行 BGREWRITEAOF
     if (server.rdb_child_pid == -1 && server.aof_child_pid == -1 &&
         server.aof_rewrite_scheduled)
     {
+    	// 没有RDB持久化子进程以及AOF重写子进程，则开始执行被延迟的BGREWRITEAOF命令
         rewriteAppendOnlyFileBackground();
     }
 
-    /* Check if a background saving or AOF rewrite in progress terminated. */
+    /* Check if a background saving(RDB持久化) or AOF rewrite in progress terminated. */
     // 检查 BGSAVE 或者 BGREWRITEAOF 是否已经执行完毕
     if (server.rdb_child_pid != -1 || server.aof_child_pid != -1) {
         int statloc;
         pid_t pid;
 
-        // 接收子进程发来的信号，非阻塞
+        // BGSAVE或者BGREWRITEAOF子进程正在执行，检查并接收子进程发来的信号，非阻塞
         if ((pid = wait3(&statloc,WNOHANG,NULL)) != 0) {
-            int exitcode = WEXITSTATUS(statloc);
+            int exitcode = WEXITSTATUS(statloc);  // 子进程的退出码exit code
             int bysignal = 0;
-            
+
+            // 子进程由于接受到信号退出(WIFSIGNALED宏返回真)，WTERMSIG宏返回
+            // 导致子进程退出的信号编码
             if (WIFSIGNALED(statloc)) bysignal = WTERMSIG(statloc);
 
             // BGSAVE 执行完毕
@@ -1609,7 +1626,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
 }
 
 /* =========================== Server initialization ======================== */
-
+// 服务器通过重用这些共享对象来避免反复创建相同的对象
 void createSharedObjects(void) {
     int j;
 
@@ -1736,6 +1753,7 @@ void initServerConfig() {
     server.unixsocketperm = REDIS_DEFAULT_UNIX_SOCKET_PERM;
     server.ipfd_count = 0;
     server.sofd = -1;
+    // 服务器默认的数据库数量
     server.dbnum = REDIS_DEFAULT_DBNUM;
     server.verbosity = REDIS_DEFAULT_VERBOSITY;
     server.maxidletime = REDIS_MAXIDLETIME;
@@ -1855,7 +1873,7 @@ void initServerConfig() {
     /* Command table -- we initiialize it here as it is part of the
      * initial configuration, since command names may be changed via
      * redis.conf using the rename-command directive. */
-    // 初始化命令表
+    // 创建并初始化命令表数据结构
     // 在这里初始化是因为接下来读取 .conf 文件时可能会用到这些命令
     server.commands = dictCreate(&commandTableDictType,NULL);
     server.orig_commands = dictCreate(&commandTableDictType,NULL);
@@ -2047,6 +2065,7 @@ void resetServerStats(void) {
     server.ops_sec_last_sample_ops = 0;
 }
 
+// 初始化redis server数据结构
 void initServer() {
     int j;
 
@@ -2147,7 +2166,7 @@ void initServer() {
 
     /* Create the serverCron() time event, that's our main way to process
      * background operations. */
-    // 为 serverCron() 创建时间事件
+    // 为 serverCron() 创建时间事件，服务器运行时定期执行serverCron函数
     if(aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL) == AE_ERR) {
         redisPanic("Can't create the serverCron time event.");
         exit(1);
@@ -2205,7 +2224,7 @@ void initServer() {
     // 初始化慢查询功能
     slowlogInit();
 
-    // 初始化 BIO 系统
+    // 初始化 BIO 系统(后台I/O模块)
     bioInit();
 }
 
@@ -2444,6 +2463,11 @@ void call(redisClient *c, int flags) {
     // 计算命令执行之后的 dirty 值
     dirty = server.dirty-dirty;
 
+    // 命令执行完的后续动作
+    /*
+     *
+     */
+
     /* When EVAL is called loading the AOF we don't want commands called
      * from Lua to go into the slowlog or to populate statistics. */
     // 不将从 Lua 中发出的命令放入 SLOWLOG ，也不进行统计
@@ -2464,7 +2488,7 @@ void call(redisClient *c, int flags) {
 
     /* Log the command into the Slow log if needed, and populate the
      * per-command statistics that we show in INFO commandstats. */
-    // 如果有需要，将命令放到 SLOWLOG 里面
+    // 如果开启的慢日志功能，如果有需要，根据命令执行时间将命令放到 SLOWLOG 里面
     if (flags & REDIS_CALL_SLOWLOG && c->cmd->proc != execCommand)
         slowlogPushEntryIfNeeded(c->argv,c->argc,duration);
     // 更新命令的统计信息
@@ -3384,6 +3408,9 @@ sds genRedisInfoString(char *section) {
     return info;
 }
 
+/*
+ * INFO 命令的实现函数
+ */
 void infoCommand(redisClient *c) {
     char *section = c->argc == 2 ? c->argv[1]->ptr : "default";
 
@@ -3838,13 +3865,16 @@ void redisAsciiArt(void) {
     zfree(buf);
 }
 
-// SIGTERM 信号的处理器
+// 为Redis服务器进程的SIGTERM 信号关联信号处理器
+// SIGTERM(程序结束信号）可以被捕获、忽略，但是SIGKILL信号(kill -9 pid)不能被捕获、忽略、阻塞
+// 为了在关闭服务器之前进行持久化工作，所以捕获SIGTERM信号
 static void sigtermHandler(int sig) {
     REDIS_NOTUSED(sig);
 
     redisLogFromHandler(REDIS_WARNING,"Received SIGTERM, scheduling shutdown...");
     
     // 打开关闭标识
+    // serverCron()函数会检查该值，来安全关闭服务器
     server.shutdown_asap = 1;
 }
 
@@ -3884,6 +3914,7 @@ int checkForSentinelMode(int argc, char **argv) {
 }
 
 /* Function called at startup to load RDB or AOF file in memory. */
+// 载入AOF文件或者RDB文件还原服务器的数据库状态
 void loadDataFromDisk(void) {
     // 记录开始时间
     long long start = ustime();
@@ -3948,7 +3979,7 @@ int main(int argc, char **argv) {
     // 检查服务器是否以 Sentinel 模式启动
     server.sentinel_mode = checkForSentinelMode(argc,argv);
 
-    // 初始化服务器
+    // 第一阶段：初始化服务器（都是些默认配置）
     initServerConfig();
 
     /* We need to init sentinel right now as parsing the configuration file
@@ -3961,7 +3992,11 @@ int main(int argc, char **argv) {
         initSentinel();
     }
 
-    // 检查用户是否指定了配置文件，或者配置选项
+    // 第二阶段：检查用户是否指定了配置文件，或者配置选项
+    // 根据用户启动redis server时指定的配置文件或配置参数修改服务器状态
+    // 比如命令“redis-server etc/redis.conf --port 10086”在启动服务器时
+    // 指定了配置文件，以及端口号，则将服务器的端口号从默认值修改为10086,
+    // 并且根据配置文件中指定的参数修改对应的值
     if (argc >= 2) {
         int j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
@@ -4026,7 +4061,7 @@ int main(int argc, char **argv) {
     // 将服务器设置为守护进程
     if (server.daemonize) daemonize();
 
-    // 创建并初始化服务器数据结构
+    // 第三阶段： 创建并初始化服务器数据结构
     initServer();
 
     // 如果服务器是守护进程，那么创建 PID 文件
@@ -4038,7 +4073,7 @@ int main(int argc, char **argv) {
     // 打印 ASCII LOGO
     redisAsciiArt();
 
-    // 如果服务器不是运行在 SENTINEL 模式，那么执行以下代码
+    // 如果服务器不是运行在 SENTINEL(哨兵)模式，那么执行以下代码
     if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
         // 打印问候语
@@ -4047,7 +4082,7 @@ int main(int argc, char **argv) {
         // 打印内存警告
         linuxOvercommitMemoryWarning();
     #endif
-        // 从 AOF 文件或者 RDB 文件中载入数据
+        // 从 AOF 文件或者 RDB 文件中载入数据来还原服务器的数据库状态
         loadDataFromDisk();
         // 启动集群？
         if (server.cluster_enabled) {
@@ -4074,7 +4109,7 @@ int main(int argc, char **argv) {
         redisLog(REDIS_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
-    // 运行事件处理器，一直到服务器关闭为止
+    // 执行事件循环，运行事件处理器，一直到服务器关闭为止
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeMain(server.el);
 

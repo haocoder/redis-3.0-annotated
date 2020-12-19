@@ -50,6 +50,7 @@ static int aeApiCreate(aeEventLoop *eventLoop) {
 
 static int aeApiResize(aeEventLoop *eventLoop, int setsize) {
     /* Just ensure we have enough room in the fd_set type. */
+    // select接口有文件描述符个数限制
     if (setsize >= FD_SETSIZE) return -1;
     return 0;
 }

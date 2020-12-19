@@ -73,14 +73,14 @@ typedef struct dictEntry {
         int64_t s64;
     } v;
 
-    // 指向下个哈希表节点，形成链表
+    // 指向具有相同哈希值的下个哈希表节点，形成链表，解决哈希冲突问题
     struct dictEntry *next;
 
 } dictEntry;
 
 
 /*
- * 字典类型特定函数
+ * 特定类型字典函数
  */
 typedef struct dictType {
 

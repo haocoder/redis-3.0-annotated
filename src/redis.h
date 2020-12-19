@@ -407,6 +407,16 @@ typedef struct redisObject {
     unsigned encoding:4;
 
     // 对象最后一次被访问的时间
+    // redisServer.lruclock - lru = idle(该键的空转时长)
+    /*  redis> SET msg "hello world"
+     *  // wait some times
+     *  redis> OBJECT IDLETIME msg
+     *  (integer)20    // 空转了20秒
+     *  redis> GET msg  //  访问键
+     *  "hello world"
+     *  redis> OBJECT IDLETIME msg
+     *  (integer)0   // 键处于活跃状态，空转时长为0秒，不是精确时间
+     * */
     unsigned lru:REDIS_LRU_BITS; /* lru time (relative to server.lruclock) */
 
     // 引用计数
@@ -846,7 +856,15 @@ struct redisServer {
     // 事件状态
     aeEventLoop *el;
 
-    // 最近一次使用时钟
+    // 最近一次使用时钟，非精确时钟
+    // serverCron函数默认每10秒更新一次的服务器时钟缓存
+    // 用于计算键的空转(idle)时长
+    /* # Server
+     * redis> INFO server
+     * .....
+     * lru_clock:13086474   // 当前server的lruclock值
+     * .....
+     */
     unsigned lruclock:REDIS_LRU_BITS; /* Clock for LRU eviction */
 
     // 关闭服务器的标识
@@ -1048,6 +1066,7 @@ struct redisServer {
 
     // AOF 文件的当前字节大小
     off_t aof_current_size;         /* AOF current size. */
+    // 如果值为1，表示BGREWRITEAOF命令被延迟了
     int aof_rewrite_scheduled;      /* Rewrite once BGSAVE terminates. */
 
     // 负责进行 AOF 重写的子进程 ID
@@ -1252,6 +1271,9 @@ struct redisServer {
     size_t zset_max_ziplist_entries;
     size_t zset_max_ziplist_value;
     size_t hll_sparse_max_bytes;
+    /* unixtime, mstime为redis服务器的时间缓存，由severCron函数执行时计算，
+     * 用于对时间精度要求不高的场景：打印日志、更新服务器LRU时钟、是否持久化
+     * */
     time_t unixtime;        /* Unix time sampled every cron cycle. */
     long long mstime;       /* Like 'unixtime' but with milliseconds resolution. */
 
