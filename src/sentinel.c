@@ -367,7 +367,7 @@ typedef struct sentinelRedisInstance {
 /* Sentinel 的状态结构 */
 struct sentinelState {
 
-    // 当前纪元
+    // 当前纪元，用于实现故障转移
     uint64_t current_epoch;     /* Current epoch. */
 
     // 保存了所有被这个 sentinel 监视的主服务器
@@ -630,7 +630,7 @@ struct redisCommand sentinelcmds[] = {
  * specific defaults. */
 // 这个函数会用 Sentinel 所属的属性覆盖服务器默认的属性
 void initSentinelConfig(void) {
-    server.port = REDIS_SENTINEL_PORT;
+    server.port = REDIS_SENTINEL_PORT;  // 替换为sentinel的端口号
 }
 
 /* Perform the Sentinel mode initialization. */
@@ -657,7 +657,7 @@ void initSentinel(void) {
     // 初始化纪元
     sentinel.current_epoch = 0;
 
-    // 初始化保存主服务器信息的字典
+    // 初始化保存被监控主服务器信息的字典
     sentinel.masters = dictCreate(&instancesDictType,NULL);
 
     // 初始化 TILT 模式的相关选项

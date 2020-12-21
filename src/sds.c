@@ -241,6 +241,7 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     // s 最少需要的长度
     newlen = (len+addlen);
 
+    // 进行空间预分配
     // 根据新长度，为 s 分配新空间所需的大小
     if (newlen < SDS_MAX_PREALLOC)
         // 如果新长度小于 SDS_MAX_PREALLOC 

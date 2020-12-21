@@ -356,7 +356,7 @@ int dictRehash(dict *d, int n) {
     // 只可以在 rehash 进行中时执行
     if (!dictIsRehashing(d)) return 0;
 
-    // 进行 N 步迁移
+    // 进行 N 步迁移，每一步都迁移一个完整的哈希桶
     // T = O(N)
     while(n--) {
         dictEntry *de, *nextde;
@@ -386,6 +386,7 @@ int dictRehash(dict *d, int n) {
         while(d->ht[0].table[d->rehashidx] == NULL) d->rehashidx++;
 
         // 指向该索引的链表表头节点
+        // 指向该哈希桶的第一个哈希节点
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
         // 将链表中的所有节点迁移到新哈希表
