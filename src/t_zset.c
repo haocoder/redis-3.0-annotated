@@ -215,7 +215,9 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, robj *obj) {
         // rank[0] 会在后面成为计算 span 值和 rank 值的基础
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
 
-        // 沿着前进指针遍历跳跃表
+        // 沿着lever i 前进指针遍历跳跃表，
+        // 当level i的forward节点不满足条件时，跳到
+        // level i-1继续遍历
         // T_wrost = O(N^2), T_avg = O(N log N)
         while (x->level[i].forward &&
             (x->level[i].forward->score < score ||

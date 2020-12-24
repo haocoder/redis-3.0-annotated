@@ -661,13 +661,13 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
     // 字典（的哈希表）为空
     if (d->ht[0].size == 0) return DICT_ERR; /* d->ht[0].table is NULL */
 
-    // 进行单步 rehash ，T = O(1)
+    // 先进行单步 rehash ，T = O(1)
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
     // 计算哈希值
     h = dictHashKey(d, key);
 
-    // 遍历哈希表
+    // 然后遍历哈希表删除key
     // T = O(1)
     for (table = 0; table <= 1; table++) {
 
@@ -681,7 +681,7 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
         while(he) {
         
             if (dictCompareKeys(d, key, he->key)) {
-                // 超找目标节点
+                // 查找目标节点
 
                 /* Unlink the element from the list */
                 // 从链表中删除
